@@ -33,7 +33,23 @@
 dsh-proxy:
   proxyUrl: "http://127.0.0.1:7890"   # 不带 http:// 会自动补全
   noProxy: "127.0.0.1,localhost,::1"  # 默认放行本机回环
+  healthCheckEnabled: true            # 后台健康检测开关（默认开启）
+  healthCheckUrl: "https://www.google.com/generate_204"  # 检测地址（走代理）
+  healthCheckInterval: 30             # 检测间隔（秒，最小 5）
+  healthCheckFailures: 3              # 连续失败多少次判定代理失效
 ```
+
+## 健康检测与弹窗报警
+
+启用代理后，插件会**通过代理**定期访问检测地址（默认 Google 的 204 探测点，轻量稳定）：
+
+- 每次访问成功 → 失败计数清零；
+- **连续失败达到 `healthCheckFailures` 次（默认 3）** → 判定代理失效；
+- 浏览器端每 5 秒轮询 `/dsh-proxy/status` 端点，状态变为失效时**弹出警告窗口**（显示连续失败次数、代理地址、最近错误、检测时间）；
+- 手动关闭后同一轮失效期间不再重复打扰；代理恢复后弹窗**自动关闭**；
+- host 日志同步输出 `[dsh-proxy] 代理疑似失效：连续 N 次访问 ... 失败` 与 `[dsh-proxy] 代理已恢复`。
+
+检测失败（代理未启动、节点失效、DNS/超时等）不会影响 dsh 本身——请求失败是预期行为，插件只负责报警。
 
 ## 行为与容错
 
@@ -43,12 +59,12 @@ dsh-proxy:
 
 ## 开发
 
-- `lib/index.js` — host 端：注册 `dsh-proxy` settings namespace（`installSettingsSection`），`scope.watch` 监听变化即时重挂 dispatcher；
-- `lib/client.js` — 浏览器端：设置页「网络代理」卡片（`settings.section` 槽位），通过 `settingsScope` 读写 namespace；
-- `test/` — 本地端到端测试（含运行时热切换验证），在 profile 目录下运行：
+- `lib/index.js` — host 端：注册 `dsh-proxy` settings namespace（`installSettingsSection`），`scope.watch` 监听变化即时重挂 dispatcher；健康检测定时器与 `GET /dsh-proxy/status` 状态端点（挂在 `webServer` 服务上）；
+- `lib/client.js` — 浏览器端：设置页「网络代理」卡片（`settings.section` 槽位），通过 `settingsScope` 读写 namespace；轮询状态端点并在代理失效时弹原生 DOM 报警窗；
+- `test/` — 本地闭环测试（无需外网与真实代理），在插件目录下直接运行：
   ```powershell
-  # 先起两个本地代理 logger（7899→A、7898→B），再：
-  node .dsh-plugins\dsh-proxy\test\hot-reload.mjs
+  node test\health-check.mjs   # 健康检测 e2e：ok → 连续失败 broken → 恢复 → 禁用 → 热切换
+  node test\client-smoke.mjs   # 浏览器端弹窗逻辑冒烟（mock DOM/fetch）
   ```
 
 ## License
