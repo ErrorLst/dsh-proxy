@@ -12,6 +12,16 @@
 
 ## 安装
 
+**首选：一行命令安装**
+
+```bash
+dsh plugin --profile web add github:ErrorLst/dsh-proxy
+```
+
+该命令在 web profile 下执行 `pnpm add github:ErrorLst/dsh-proxy`；安装成功后 reconcile 读取包内 `dsh.bundle.patch` 声明，自动把 `@dsh-external/dsh-proxy` 追加进 `dsh.profile.bundles`（无需手动登记），重启 `dsh web` 后生效。
+
+**本地开发安装（手动 link）**
+
 在 web profile（`~/.dsh/profiles/web`）中：
 
 1. `package.json` 的 `dsh.profile.bundles` 加入 `"@dsh-external/dsh-proxy"`；
@@ -56,6 +66,7 @@ dsh-proxy:
 ## 行为与容错
 
 - 本机回环地址默认不进代理，GUI、mock server、内部 RPC 不受影响；
+- **未配置代理时 dsh 保持直连**：settings / 插件配置 / `HTTP(S)_PROXY` 均为空就不替换全局 dispatcher；即使先配置后清空（设置页删掉代理地址、清空环境变量，或插件被卸载），也会**立即恢复直连**，无需重启 dsh；
 - 代理地址非法（如无 scheme 的裸地址会由 `new URL()` 拒绝）→ 自动补 `http://`，仍失败则 **warn 并保持直连**，不会拖垮 dsh 启动；
 - 代理软件未启动时，dsh 出站请求会失败——这是预期行为，不是插件 bug。
 
