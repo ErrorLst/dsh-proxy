@@ -1,0 +1,5 @@
+# dsh bundle layer: mount the host half (lib/index.js via the package root
+# export). Host-only plugin: no client code, so no dsh.client declaration.
+- insert:
+    - id: dsh-proxy
+      name: '@dsh-external/dsh-proxy'
