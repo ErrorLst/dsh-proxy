@@ -31,7 +31,14 @@ const mockSettings = {
 
 // ---- mock proxy ----
 let proxyMode = "ok"; // "ok" | "fail"
+let flakeNext = false; // one-shot 500 for the retry-semantics scenario
 const proxy = createServer((req, res) => {
+  if (flakeNext) {
+    flakeNext = false;
+    res.writeHead(500);
+    res.end("FLAKE");
+    return;
+  }
   if (proxyMode === "ok") {
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("PASS");
@@ -74,6 +81,7 @@ const CONFIG = {
   healthCheckEnabled: true,
   healthCheckUrl: `http://proxy.test:${proxyPort}/health`,
   healthCheckInterval: 0.3,
+  healthCheckRetryDelay: 0.05, // fast retry for tests
   healthCheckFailures: 3,
   healthCheckFirstDelayMs: 100, // internal test hook: skip the 5s grace
 };
@@ -119,9 +127,19 @@ assert(s1.json.checkUrl === `http://proxy.test:${proxyPort}/health`, "checkUrl r
 assert(s1.json.threshold === 3, "threshold reported");
 assert(typeof s1.json.lastCheck === "string" && s1.json.lastCheck.length > 0, "lastCheck reported");
 
-// 2. proxy starts failing -> 3 consecutive failures -> broken
+// 1.5. flaky proxy: first attempt 500, retry succeeds -> check NOT counted
+//      as a failure (both attempts must fail)
+flakeNext = true;
+await sleep(1000);
+const s15 = readStatus();
+assert(s15.json.state === "ok", `step1.5 state=ok after retry success (${summarize(s15.json)})`);
+assert(s15.json.failures === 0, `step1.5 failures=0 (${summarize(s15.json)})`);
+assert(s15.json.retryDelaySeconds === 0.05, "retryDelaySeconds reported");
+
+// 2. proxy starts failing -> both attempts fail per check -> consecutive
+//    failures accumulate -> broken
 proxyMode = "fail";
-await sleep(1800);
+await sleep(2300);
 const s2 = readStatus();
 assert(s2.json.state === "broken", `step2 state=broken (${summarize(s2.json)})`);
 assert(s2.json.failures >= 3, `step2 failures>=3 (${summarize(s2.json)})`);
@@ -165,7 +183,7 @@ assert(s5.json.state === "ok", `step5 state=ok after switch (${summarize(s5.json
 assert(s5.json.proxyUrl === `http://127.0.0.1:${proxy2Port}`, "step5 proxyUrl updated");
 proxy2.close();
 
-const result = { s1: s1.json, s2: s2.json, s3: s3.json, s4: s4.json, s5: s5.json, step5, logs };
+const result = { s1: s1.json, s15: s15.json, s2: s2.json, s3: s3.json, s4: s4.json, s5: s5.json, step5, logs };
 const text = JSON.stringify(result, null, 2);
 if (process.env.OUTF) fs.writeFileSync(process.env.OUTF, text);
 console.log(text);
