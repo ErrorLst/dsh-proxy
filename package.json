@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/dsh-proxy",
-  "version": "0.1.0",
-  "description": "DSH bundle plugin: route all dsh outbound fetch requests (LLM, web search, remote MCP) through an HTTP(S) proxy via undici EnvHttpProxyAgent",
+  "version": "0.2.0",
+  "description": "DSH bundle plugin: route all dsh outbound fetch requests (LLM, web search, remote MCP) through an HTTP(S) proxy via undici EnvHttpProxyAgent; plus proxy health monitoring and dsh update checking with AI-composed changelog popups",
   "keywords": [
     "dsh",
     "proxy",
@@ -44,7 +44,8 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-settings"
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-primitives"
       ]
     }
   }

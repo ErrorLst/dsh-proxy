@@ -48,6 +48,8 @@ dsh-proxy:
   healthCheckInterval: 10             # 检测间隔（秒，最小 5，默认 10）
   healthCheckRetryDelay: 2            # 失败后下一次重试的间隔（秒，默认 2）
   healthCheckFailures: 3              # 连续失败多少次判定代理失效
+  updateCheckEnabled: true            # 更新检查开关（默认开启）
+  updateCheckIntervalMinutes: 30      # 更新检查间隔（分钟，最小 5，默认 30）
 ```
 
 ## 健康检测与弹窗报警
@@ -63,6 +65,18 @@ dsh-proxy:
 
 检测失败（代理未启动、节点失效、DNS/超时等）不会影响 dsh 本身——请求失败是预期行为，插件只负责报警。
 
+## 更新检查与弹窗提示
+
+插件会在**启动后**以及之后每隔 `updateCheckIntervalMinutes`（默认 **30 分钟**，设置页可改）检查一次 dsh 官方仓库（[deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness/tags)）是否有新版本：
+
+- 优先调用 GitHub API 拉取 tag 列表（每页 100 个），接口不可用时回退抓取 `/tags` 页面解析 tag 链接；
+- 与当前安装的 dsh 版本（读取 `@deepseek-ai/dsh` 的 package.json）做语义化比较（支持仓库使用的 `dsh-v` 前缀与 `-rc.x` 预发布号）；
+- **发现新版本时**：抓取该 tag 的发布说明（release API → releases 列表 → compare API 提交列表 → 发布页 HTML，逐级回退），交给**默认模型**（设置页选择的模型）整理成一份简洁的中文更新日志，然后浏览器端弹窗提示「发现 dsh 新版本」，展示当前 → 最新版本与 AI 整理的更新日志（**Markdown 渲染**：优先复用 dsh 的 MarkdownText 组件，支持 GFM、代码高亮、公式等；模块不可用时自动回退到插件内置的轻量 Markdown 渲染器，标题/列表/代码/加粗等仍正常渲染，绝不显示原始文本），可一键跳转 GitHub 发布页；
+- 同一版本只整理一次更新日志（结果持久化在 `~/.dsh/dsh-proxy/state.json`，重启后直接复用，不再重复调用模型）；
+- 浏览器端关闭弹窗后**仅本次运行内**不再提示该版本（内存记录，不落盘）：dsh 重启（服务端更换 `bootId`）或刷新页面后会**再次提示**；出现更新的版本时同样会再次弹窗；
+- 检查失败（离线、接口异常、无法确定当前版本）只记日志并设置 `lastError`，不影响 dsh 正常工作；
+- 浏览器端每 30 秒轮询 `GET /dsh-proxy/update-status` 获取最新检查结果。
+
 ## 行为与容错
 
 - 本机回环地址默认不进代理，GUI、mock server、内部 RPC 不受影响；
@@ -72,13 +86,16 @@ dsh-proxy:
 
 ## 开发
 
-- `lib/index.js` — host 端：注册 `dsh-proxy` settings namespace（`installSettingsSection`），`scope.watch` 监听变化即时重挂 dispatcher；健康检测定时器与 `GET /dsh-proxy/status` 状态端点（挂在 `webServer` 服务上）；
-- `lib/client.js` — 浏览器端：设置页「网络代理」卡片（`settings.section` 槽位），通过 `settingsScope` 读写 namespace；轮询状态端点并在代理失效时弹原生 DOM 报警窗；
+- `lib/index.js` — host 端：注册 `dsh-proxy` settings namespace（`installSettingsSection`），`scope.watch` 监听变化即时重挂 dispatcher；健康检测定时器与 `GET /dsh-proxy/status` 状态端点、更新检查定时器与 `GET /dsh-proxy/update-status` 更新状态端点（挂在 `webServer` 服务上）；
+- `lib/client.js` — 浏览器端：设置页「网络代理」卡片（`settings.section` 槽位），通过 `settingsScope` 读写 namespace；轮询状态端点并在代理失效时弹原生 DOM 报警窗；轮询更新状态端点并在发现新版本时弹更新提示窗（含 AI 整理的更新日志）；
 - `test/` — 本地闭环测试（无需外网与真实代理），在插件目录下直接运行：
   ```powershell
-  node test\health-check.mjs   # 健康检测 e2e：ok → 连续失败 broken → 恢复 → 禁用 → 热切换
-  node test\client-smoke.mjs   # 浏览器端弹窗逻辑冒烟（mock DOM/fetch）
+  node test\health-check.mjs        # 健康检测 e2e：ok → 连续失败 broken → 恢复 → 禁用 → 热切换
+  node test\update-check.mjs        # 更新检查 e2e：mock GitHub API + mock 默认模型
+  node test\update-check-utils.mjs  # 版本比较 / tag 前缀 / HTML 提取 单元测试
+  node test\client-smoke.mjs        # 浏览器端弹窗逻辑冒烟（mock DOM/fetch，覆盖健康报警与更新提示）
   ```
+  （`hot-reload.mjs` / `e2e-host.mjs` 需要外部 mock 代理进程与 `HTTP_PROXY` 环境，按需使用。）
 
 ## License
 

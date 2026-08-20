@@ -27,6 +27,7 @@ const ctx = {
     info: (...a) => logs.push("INFO " + a.join(" ")),
     warn: (...a) => logs.push("WARN " + a.join(" ")),
   },
+  get: (name) => (name === "webServer" ? { register: () => () => {} } : void 0),
   inject: (deps, cb) =>
     cb({
       settings: mockSettings,
